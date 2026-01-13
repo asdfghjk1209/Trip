@@ -11,7 +11,7 @@ import {
   ChevronLeft, ChevronRight, GripVertical, Plus, CalendarDays, MapPin,
   TrainFront, BedDouble, Utensils, Camera, Info, 
   UploadCloud, X, Clock, AlignLeft, Loader2, Trash2, Check, AlertTriangle, 
-  Globe, Copy, Lock, UserPlus, Users, Mail
+  Globe, Copy, Lock, UserPlus, Users
 } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -31,8 +31,8 @@ interface Trip {
   start_date: string;
   budget_limit?: number;
   budget?: number;
-  user_id?: string;
-  is_public?: boolean;
+  user_id?: string;     // 作者ID
+  is_public?: boolean;  // 公开状态
 }
 interface Day { id: number; day_index: number; title: string; date?: string; }
 interface Activity { 
@@ -40,7 +40,7 @@ interface Activity {
   type: string; is_tentative: boolean; images: string[]; memo?: string; cost?: number;
 }
 interface SearchResult { name: string; address: string; lat: number; lng: number; }
-interface TripMember { id: number; email: string; } // ✨ 新增：成员类型
+interface TripMember { id: number; email: string; } // ✨ 新增：成员结构
 
 // --- UI 配置 ---
 const TYPE_CONFIG: Record<string, { color: string, bg: string, border: string, icon: any, label: string }> = {
@@ -69,7 +69,7 @@ export default function PlanDetail() {
   const [days, setDays] = useState<Day[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [isMember, setIsMember] = useState(false); // ✨ 新增：是否是成员
+  const [isMember, setIsMember] = useState(false); // ✨ 判断是否是协作者
   
   // UI State
   const [currentDayIdx, setCurrentDayIdx] = useState(0);
@@ -78,7 +78,7 @@ export default function PlanDetail() {
   const [activeTab, setActiveTab] = useState('timeline');
   
   const [showModal, setShowModal] = useState(false); 
-  const [showShareModal, setShowShareModal] = useState(false); 
+  const [showShareModal, setShowShareModal] = useState(false); // ✨ 分享弹窗
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null); 
   
   const [confirmState, setConfirmState] = useState<{ isOpen: boolean, title: string, desc: string, isDestructive: boolean, onConfirm: () => void }>({
@@ -112,7 +112,7 @@ export default function PlanDetail() {
     }
     setTrip(tripData);
 
-    // 3. ✨ 检查是否是协作者
+    // 3. ✨ 检查协作者身份
     if (user && tripData.user_id !== user.id) {
         const { data: memberData } = await supabase.from('trip_members').select('*').eq('trip_id', tripId).eq('email', user.email).single();
         if (memberData) setIsMember(true);
@@ -136,14 +136,14 @@ export default function PlanDetail() {
   useEffect(() => { initData(); }, [initData]);
   useEffect(() => { fetchActivities(); }, [fetchActivities]);
 
-  // ✨ 核心权限逻辑：Owner 或 Member 都可以编辑
+  // ✨ 核心权限控制：Owner 或 Member 均可编辑
   const isOwner = currentUser && trip && currentUser.id === trip.user_id;
   const canEdit = isOwner || isMember;
 
   // --- 逻辑处理 ---
   const handleOpenCreate = () => { setEditingActivity(null); setShowModal(true); };
   const handleOpenEdit = (activity: Activity) => { 
-      if(!canEdit) return; // 只有有权限的人能点开编辑
+      if(!canEdit) return; 
       setEditingActivity(activity); 
       setShowModal(true); 
   };
@@ -176,7 +176,7 @@ export default function PlanDetail() {
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
-    if(!canEdit) return; // 仅有权限者可拖拽
+    if(!canEdit) return;
     const { active, over } = event;
     if (active.id !== over?.id) {
         setActivities((items) => {
@@ -199,12 +199,12 @@ export default function PlanDetail() {
       
       {showModal && <ActivityModal initialData={editingActivity} onClose={() => setShowModal(false)} onSubmit={handleSaveActivity} />}
       
-      {/* ✨ ShareModal 传入 isOwner，只有 Owner 能邀请人 */}
+      {/* ✨ ShareModal: 传入 isOwner 状态 */}
       {showShareModal && trip && <ShareModal trip={trip} isOwner={!!isOwner} onClose={() => setShowShareModal(false)} onUpdate={(newTrip) => setTrip(newTrip)} />}
       
       {confirmState.isOpen && <ConfirmModal {...confirmState} onCancel={() => setConfirmState(prev => ({ ...prev, isOpen: false }))} />}
 
-      {/* FAB: 有编辑权限时显示 */}
+      {/* FAB: 有权限编辑时才显示 */}
       {activeTab === 'timeline' && canEdit && (
         <div className="fixed bottom-8 right-6 z-50 animate-in zoom-in duration-300">
             <button onClick={handleOpenCreate} className="w-14 h-14 rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-300 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center border-2 border-white/20" title="添加新活动">
@@ -234,11 +234,12 @@ export default function PlanDetail() {
                 ))}
             </div>
             <div className="flex items-center gap-3">
+                {/* 分享按钮 */}
                 <button onClick={() => setShowShareModal(true)} className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/60 rounded-md transition-all">
                     <Share2 size={13} /> {isOwner ? '分享与协作' : '行程信息'}
                 </button>
                 
-                {/* 仅有编辑权限的人可见整理按钮 */}
+                {/* 整理按钮 (仅编辑者可见) */}
                 {canEdit && (
                     <button onClick={() => setIsEditing(!isEditing)} className={cn("flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md shadow-sm transition-all border", isEditing ? "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50")}>
                         {isEditing ? <Check size={13} /> : <PenLine size={13} />}
