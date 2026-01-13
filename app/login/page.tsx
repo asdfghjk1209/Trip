@@ -10,19 +10,16 @@ export default function LoginPage() {
   const [otp, setOtp] = useState('')
   const [step, setStep] = useState<'email' | 'otp'>('email')
   
-  // 状态管理
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
   
-  // 倒计时与限制
-  const [countdown, setCountdown] = useState(0) // 倒计时秒数
-  const [retryCount, setRetryCount] = useState(0) // 输错次数
-  const MAX_RETRIES = 5 // 最大允许输错次数
+  const [countdown, setCountdown] = useState(0)
+  const [retryCount, setRetryCount] = useState(0)
+  const MAX_RETRIES = 5
 
   const router = useRouter()
 
-  // 倒计时逻辑
   useEffect(() => {
     if (countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
@@ -30,14 +27,12 @@ export default function LoginPage() {
     }
   }, [countdown])
 
-  // 第一步：发送验证码
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setErrorMsg('')
     setSuccessMsg('')
     
-    // 简单的邮箱格式校验
     if(!email.includes('@') || !email.includes('.')) {
         setLoading(false)
         setErrorMsg('请输入有效的邮箱地址')
@@ -46,33 +41,28 @@ export default function LoginPage() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        shouldCreateUser: true, 
-      },
+      options: { shouldCreateUser: true },
     })
     
     setLoading(false)
     if (error) {
-        // 处理 Supabase 的频率限制错误
         if (error.message.includes('Rate limit') || error.status === 429) {
             setErrorMsg('发送太频繁了，请稍后再试 (约60秒)')
-            setCountdown(60) // 强制开启倒计时
+            setCountdown(60)
         } else {
             setErrorMsg(error.message)
         }
     } else {
         setStep('otp')
-        setCountdown(60) // 开始60秒倒计时
-        setRetryCount(0) // 重置尝试次数
-        setSuccessMsg('验证码已发送，请查收邮件（包括垃圾箱）')
+        setCountdown(60)
+        setRetryCount(0)
+        setSuccessMsg('验证码已发送，请查收邮件')
     }
   }
 
-  // 第二步：验证验证码
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // 检查尝试次数
     if (retryCount >= MAX_RETRIES) {
         setErrorMsg('错误次数过多，请重新获取验证码')
         return
@@ -89,36 +79,31 @@ export default function LoginPage() {
 
     if (error) {
         setLoading(false)
-        setRetryCount(prev => prev + 1) // 增加错误计数
+        setRetryCount(prev => prev + 1)
         const remaining = MAX_RETRIES - (retryCount + 1)
         
         if (remaining <= 0) {
             setErrorMsg('错误次数过多，请点击下方按钮重新获取')
         } else {
-            setErrorMsg(`验证码错误或已失效。剩余尝试机会：${remaining}次`)
+            setErrorMsg(`验证码错误。剩余尝试机会：${remaining}次`)
         }
     } else {
-        // 登录成功
         router.push('/')
         router.refresh()
     }
   }
 
-  // 重新发送处理
   const handleResend = () => {
       setStep('email')
       setOtp('')
       setErrorMsg('')
       setSuccessMsg('')
-      // 注意：这里不重置倒计时，如果还在倒计时中，用户需要等待
   }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50 p-4">
-      
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-zinc-100 p-8 animate-in fade-in zoom-in-95 duration-300 relative overflow-hidden">
         
-        {/* 顶部进度条 (倒计时视觉反馈) */}
         {countdown > 0 && (
             <div 
                 className="absolute top-0 left-0 h-1 bg-zinc-900 transition-all duration-1000 ease-linear"
@@ -126,7 +111,6 @@ export default function LoginPage() {
             />
         )}
 
-        {/* 头部 Logo */}
         <div className="flex flex-col items-center mb-8">
             <div className="w-12 h-12 bg-zinc-900 text-white rounded-xl flex items-center justify-center shadow-lg shadow-zinc-200 mb-4">
                 <LayoutGrid size={24} />
@@ -135,7 +119,6 @@ export default function LoginPage() {
             <p className="text-xs text-zinc-500 mt-1">登录以继续您的旅程</p>
         </div>
 
-        {/* 阶段一：输入邮箱 */}
         {step === 'email' ? (
             <form onSubmit={handleSendOtp} className="space-y-4">
                 <div className="space-y-1.5">
@@ -176,7 +159,6 @@ export default function LoginPage() {
                 </button>
             </form>
         ) : (
-            /* 阶段二：输入验证码 */
             <form onSubmit={handleVerifyOtp} className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                 <div className="text-center mb-4">
                     <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 mb-2">
@@ -190,7 +172,7 @@ export default function LoginPage() {
 
                 <div className="space-y-1.5">
                     <div className="flex justify-between items-center px-1">
-                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">6位验证码</label>
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">验证码</label>
                         {countdown > 0 && <span className="text-[10px] font-mono text-zinc-400">{countdown}s</span>}
                     </div>
                     <div className="relative group">
@@ -202,8 +184,9 @@ export default function LoginPage() {
                             disabled={retryCount >= MAX_RETRIES}
                             value={otp}
                             onChange={e => setOtp(e.target.value.trim())}
-                            placeholder="123456"
-                            maxLength={6}
+                            placeholder="请输入邮件中的数字"
+                            // ✨ 关键修改：最大长度改为 8，且不强制位数，兼容性更强
+                            maxLength={8}
                             className="w-full pl-9 pr-4 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-sm text-zinc-900 outline-none focus:bg-white focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all placeholder:text-zinc-400 tracking-widest font-mono disabled:opacity-50"
                         />
                     </div>
