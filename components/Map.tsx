@@ -1,115 +1,131 @@
-'use client';
+'use client'
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 
-// ✨ 核心修复：添加类型声明，解决 "Property 'AMap' does not exist" 报错
-declare global {
-  interface Window {
-    AMap: any;
-    _AMapSecurityConfig: any;
-  }
-}
+// --- 修复 Leaflet 默认图标缺失的问题 ---
+const DefaultIcon = L.icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
 
-interface Marker {
-  id: number;
-  lat: number;
-  lng: number;
-  title: string;
-  index?: number;
-}
+// --- 自定义数字图标生成器 ---
+const createNumberedIcon = (index: number) => {
+  return L.divIcon({
+    className: 'custom-map-icon',
+    html: `<div style="
+      background-color: #4F46E5; 
+      color: white; 
+      width: 24px; 
+      height: 24px; 
+      border-radius: 50%; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      font-size: 12px; 
+      font-weight: bold; 
+      border: 2px solid white; 
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    ">${index + 1}</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+};
 
 interface MapProps {
+  markers?: {
+    id: number;
+    lat: number;
+    lng: number;
+    title: string;
+    index?: number;
+  }[];
   className?: string;
-  markers?: Marker[];
 }
 
-export default function Map({ className, markers = [] }: MapProps) {
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const mapInstance = useRef<any>(null);
+// --- 核心组件：负责监听数据变化并自动调整视野 ---
+function MapUpdater({ markers }: { markers: any[] }) {
+  const map = useMap();
 
-  // 初始化地图
   useEffect(() => {
-    // 如果地图已经初始化，或者没有容器，跳过
-    if (mapInstance.current || !mapContainer.current) return;
-
-    const initMap = () => {
-      // 再次检查 window.AMap 是否存在
-      if (!window.AMap) return;
-
-      const AMap = window.AMap;
+    if (markers && markers.length > 0) {
+      // 1. 提取所有坐标点
+      const points = markers.map(m => [m.lat, m.lng] as [number, number]);
       
-      try {
-        mapInstance.current = new AMap.Map(mapContainer.current, {
-          zoom: 11,
-          center: [135.7681, 35.0116], // 默认显示京都
-          viewMode: '3D',
-        });
+      // 2. 创建边界 (Bounds)
+      const bounds = L.latLngBounds(points);
+      
+      // 3. 调整视野以包含所有点 (padding 避免点紧贴边缘)
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+    }
+  }, [markers, map]); // 依赖 markers，数据变了就执行
+
+  return null;
+}
+
+export default function Map({ markers = [], className }: MapProps) {
+  // 提取路径线坐标
+  const polylinePositions = useMemo(() => 
+    markers.map(m => [m.lat, m.lng] as [number, number]), 
+  [markers]);
+
+  // 默认中心点 (成都)
+  const defaultCenter = [30.6586, 104.0648] as [number, number];
+  const center = markers.length > 0 ? [markers[0].lat, markers[0].lng] as [number, number] : defaultCenter;
+
+  return (
+    <div className={`relative z-0 ${className}`}>
+      <MapContainer 
+        center={center} 
+        zoom={13} 
+        scrollWheelZoom={true} 
+        style={{ height: '100%', width: '100%', borderRadius: 'inherit' }}
+      >
+        {/* 1. 地图图层 (使用高德/OSM/CartoDB) */}
+        {/* 方案 A: CartoDB Voyager (非常适合旅行风格，干净漂亮) */}
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        />
         
-        // 初始加载 markers
-        updateMarkers();
-      } catch (e) {
-        console.error("Map init failed:", e);
-      }
-    };
+        {/* 方案 B: 如果你在国内觉得慢，可以用高德地图 (取消下面注释) */}
+        {/* <TileLayer
+           url="https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
+        /> */}
 
-    // 简单的加载检查逻辑
-    if (window.AMap) {
-      initMap();
-    } else {
-      // 如果你是在 layout.tsx 中通过 <Script> 加载的，这里等待加载完成
-      // 实际项目中建议使用 @amap/amap-jsapi-loader
-      const checkInterval = setInterval(() => {
-        if (window.AMap) {
-          initMap();
-          clearInterval(checkInterval);
-        }
-      }, 500);
-      
-      // 5秒后超时停止检查
-      setTimeout(() => clearInterval(checkInterval), 5000);
-    }
+        {/* 2. 路径连线 (虚线效果) */}
+        {polylinePositions.length > 1 && (
+          <Polyline 
+            positions={polylinePositions} 
+            pathOptions={{ color: '#6366f1', weight: 3, dashArray: '5, 10', opacity: 0.6 }} 
+          />
+        )}
 
-    return () => {
-      if (mapInstance.current) {
-        mapInstance.current.destroy();
-        mapInstance.current = null;
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+        {/* 3. 标记点 */}
+        {markers.map((marker, idx) => (
+          <Marker 
+            key={`${marker.id}-${idx}`} 
+            position={[marker.lat, marker.lng]}
+            icon={createNumberedIcon(idx)}
+          >
+            <Popup>
+              <div className="font-bold text-sm">{marker.title}</div>
+              <div className="text-xs text-gray-500">序号: {idx + 1}</div>
+            </Popup>
+          </Marker>
+        ))}
 
-  // 更新标记点的逻辑
-  const updateMarkers = () => {
-    if (!mapInstance.current || !window.AMap) return;
-    
-    const map = mapInstance.current;
-    const AMap = window.AMap;
-
-    // 清除旧点
-    map.clearMap();
-
-    // 添加新点
-    markers.forEach((marker) => {
-      if (marker.lat && marker.lng) {
-        const m = new AMap.Marker({
-          position: new AMap.LngLat(marker.lng, marker.lat),
-          title: marker.title,
-        });
-        map.add(m);
-      }
-    });
-
-    // 自动缩放视野以包含所有点
-    if (markers.length > 0) {
-      map.setFitView();
-    }
-  };
-
-  // 监听 markers 变化
-  useEffect(() => {
-    updateMarkers();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markers]);
-
-  return <div ref={mapContainer} className={className} />;
+        {/* 4. 自动更新器 */}
+        <MapUpdater markers={markers} />
+        
+      </MapContainer>
+    </div>
+  );
 }

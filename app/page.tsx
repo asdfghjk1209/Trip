@@ -4,13 +4,14 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   Plus, Calendar, ArrowRight, MoreHorizontal, LayoutGrid, Heart, MapPin, 
-  CloudSun, LogIn, LogOut, User as UserIcon, Settings, X, Moon, Sun, Loader2
+  CloudSun, LogIn, LogOut, User as UserIcon, Settings, X, Moon, Sun, Loader2, Users
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from 'next/navigation';
 import { cn } from "@/lib/utils";
-import UserMenu from "@/components/UserMenu"; // 确保路径正确
+import UserMenu from "@/components/UserMenu"; 
 
+// 定义新的数据接口
 interface Trip {
   id: number;
   created_at: string;
@@ -18,7 +19,11 @@ interface Trip {
   start_date: string | null;
   cover_image: string | null;
   is_public: boolean;
-  user_id: string;
+  user_id: string; // 创建者 ID
+  
+  // 前端辅助字段
+  my_role?: 'owner' | 'editor' | 'viewer'; 
+  member_count?: number; 
 }
 
 export default function Home() {
@@ -28,16 +33,12 @@ export default function Home() {
   const [authChecking, setAuthChecking] = useState(true);
   const router = useRouter();
   
-  // 🌤️ 天气数据
   const [weather] = useState({ temp: 24, condition: 'Sunny', city: 'Chengdu' });
-
-  // 🛠️ UI 状态管理
-  const [showCreateModal, setShowCreateModal] = useState(false); // 新建行程弹窗
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTripTitle, setNewTripTitle] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  
-  const [showSettingsModal, setShowSettingsModal] = useState(false); // 设置弹窗
-  const [isDarkMode, setIsDarkMode] = useState(false); // 深色模式状态
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // 1. 初始化
   useEffect(() => {
@@ -45,9 +46,10 @@ export default function Home() {
         const { data: { user } } = await supabase.auth.getUser();
         setUser(user);
         setAuthChecking(false);
-        fetchTrips();
+        if (user) fetchTrips(user.id);
+        else setLoading(false);
         
-        // 检查本地存储的主题设置
+        // 主题检测
         if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             setIsDarkMode(true);
             document.documentElement.classList.add('dark');
@@ -56,16 +58,20 @@ export default function Home() {
             document.documentElement.classList.remove('dark');
         }
     };
-
     init();
 
-    const channel = supabase.channel('trips_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, () => fetchTrips())
+    // 监听实时变化 (当成员表变动时刷新)
+    const channel = supabase.channel('home_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_members' }, () => {
+         if(user) fetchTrips(user.id);
+      })
       .subscribe();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-        setUser(session?.user ?? null);
-        fetchTrips();
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+        if (currentUser) fetchTrips(currentUser.id);
+        else setTrips([]);
     });
 
     return () => { 
@@ -74,7 +80,6 @@ export default function Home() {
     };
   }, []);
 
-  // 切换深色模式
   const toggleTheme = () => {
       if (isDarkMode) {
           document.documentElement.classList.remove('dark');
@@ -87,19 +92,40 @@ export default function Home() {
       }
   };
 
-  const fetchTrips = async () => {
+  // 🔥 核心逻辑更新：获取我参与的所有行程
+  const fetchTrips = async (userId: string) => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('trips')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+        // 查询 trip_members 表，同时关联查出 trips 的详情
+        const { data, error } = await supabase
+            .from('trip_members')
+            .select(`
+                role,
+                trip:trips (
+                    *,
+                    trip_members (count) 
+                )
+            `)
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
 
-    if (error) console.error('Fetch trips error:', error.message);
-    else setTrips((data as any[]) || []);
-    setLoading(false);
+        if (error) throw error;
+
+        // 格式化数据
+        const formattedTrips = (data || []).map((item: any) => ({
+            ...item.trip, // 展开 trip 信息
+            my_role: item.role, // 记录我的角色
+            member_count: item.trip?.trip_members?.[0]?.count || 1
+        })).filter((t:any) => t !== null); // 过滤掉可能的空值
+
+        setTrips(formattedTrips);
+    } catch (error: any) {
+        console.error('Fetch trips error:', error.message);
+    } finally {
+        setLoading(false);
+    }
   };
 
-  // 打开创建弹窗
   const handleOpenCreate = () => {
     if (!user) {
         router.push('/login'); 
@@ -109,33 +135,69 @@ export default function Home() {
     setShowCreateModal(true);
   };
 
-  // 提交创建行程
+  // 🔥 核心逻辑更新：创建行程 + 自动设为 Owner
   const confirmCreateTrip = async (e: React.FormEvent) => {
       e.preventDefault();
-      if(!newTripTitle.trim()) return;
+      if(!newTripTitle.trim() || !user) return;
 
       setIsCreating(true);
       const randomCover = `https://images.unsplash.com/photo-${['1476514525535-07fb3b4ae5f1', '1501785888041-af3ef285b470', '1469854523086-cc02fe5d8800', '1493976040374-85c8e12f0c0e'][Math.floor(Math.random() * 4)]}?w=800&auto=format&fit=crop`;
 
-      const { error } = await supabase.from('trips').insert([
-        { 
-            title: newTripTitle, 
-            start_date: new Date().toISOString(), 
-            cover_image: randomCover,
-            user_id: user.id
-        }
-      ]);
-      
-      setIsCreating(false);
-      setShowCreateModal(false);
-      
-      if (error) alert("创建失败: " + error.message);
+      try {
+          // 1. 创建行程
+          const { data: newTrip, error: tripError } = await supabase
+              .from('trips')
+              .insert([{ 
+                  title: newTripTitle, 
+                  start_date: new Date().toISOString(), 
+                  cover_image: randomCover,
+                  user_id: user.id
+              }])
+              .select()
+              .single();
+
+          if (tripError) throw tripError;
+
+          // 2. 在成员表里添加自己 (Owner)
+          const { error: memberError } = await supabase
+              .from('trip_members')
+              .insert([{
+                  trip_id: newTrip.id,
+                  user_id: user.id,
+                  role: 'owner'
+              }]);
+
+          if (memberError) throw memberError;
+
+          setShowCreateModal(false);
+          fetchTrips(user.id);
+
+      } catch (error: any) {
+          alert("创建失败: " + error.message);
+      } finally {
+          setIsCreating(false);
+      }
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: number) => {
+  // 🔥 核心逻辑更新：区分删除和退出
+  const handleDelete = async (e: React.MouseEvent, trip: Trip) => {
     e.preventDefault(); e.stopPropagation();
-    if(!confirm("确定要删除这个行程吗？")) return;
-    await supabase.from('trips').delete().match({ id });
+    if (!user) return;
+
+    // 这里的权限判断依据是数据库里的 my_role
+    const isOwner = trip.my_role === 'owner';
+
+    if (isOwner) {
+        if(!confirm(`⚠️ 警告：你是此行程的创建者。\n\n删除操作将永久销毁此行程，所有参与者都将无法访问。\n\n确定要继续吗？`)) return;
+        await supabase.from('trips').delete().match({ id: trip.id });
+    } else {
+        if(!confirm(`确定要退出这个行程吗？\n\n这只会将其从你的列表中移除，不会影响其他成员。`)) return;
+        await supabase.from('trip_members').delete().match({ trip_id: trip.id, user_id: user.id });
+    }
+    
+    // 乐观更新 UI (不等服务器返回直接删)
+    setTrips(prev => prev.filter(t => t.id !== trip.id));
+    fetchTrips(user.id); // 再次确认同步
   };
 
   const handleLogout = async () => {
@@ -148,7 +210,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-sans transition-colors duration-300 pb-20">
       
-      {/* 🌟 1. 设置弹窗 Modal */}
+      {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setShowSettingsModal(false)}></div>
@@ -158,7 +220,6 @@ export default function Home() {
                     <button onClick={() => setShowSettingsModal(false)} className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"><X size={20}/></button>
                 </div>
                 <div className="p-6 space-y-6">
-                    {/* 深色模式开关 */}
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400">
@@ -177,7 +238,6 @@ export default function Home() {
                         </button>
                     </div>
 
-                    {/* 账号信息展示 */}
                     <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800">
                         <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3">账号信息</h4>
                         <div className="flex items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
@@ -195,7 +255,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🌟 2. 新建行程弹窗 Modal (替代 window.prompt) */}
+      {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setShowCreateModal(false)}></div>
@@ -247,34 +307,18 @@ export default function Home() {
                     <div className="w-7 h-7 rounded-full bg-zinc-100 animate-pulse"></div>
                 ) : user ? (
                     <div className="flex items-center gap-3">
-                        {authChecking ? (
-                            <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 animate-pulse"></div>
-                        ) : user ? (
-                            <div className="flex items-center gap-3">
-                                {/* 显示用户名 (大屏幕显示) */}
-                                <div className="text-xs text-zinc-500 dark:text-zinc-400 hidden sm:block">
-                                    {user.email?.split('@')[0]}
-                                </div>
-
-                                {/* ✨ 这里替换为新的组件 ✨ */}
-                                <UserMenu 
-                                    user={user} 
-                                    onLogout={handleLogout} 
-                                    onOpenSettings={() => setShowSettingsModal(true)} 
-                                />
-                                
-                            </div>
-                        ) : (
-                            <Link href="/login">
-                                <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-bold rounded-full hover:opacity-90 transition-all shadow-sm">
-                                    <LogIn size={12} /> 登录
-                                </button>
-                            </Link>
-                        )}
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400 hidden sm:block">
+                            {user.email?.split('@')[0]}
+                        </div>
+                        <UserMenu 
+                            user={user} 
+                            onLogout={handleLogout} 
+                            onOpenSettings={() => setShowSettingsModal(true)} 
+                        />
                     </div>
                 ) : (
                     <Link href="/login">
-                        <button className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-medium rounded-full hover:opacity-90 transition-all shadow-sm">
+                        <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-bold rounded-full hover:opacity-90 transition-all shadow-sm">
                             <LogIn size={12} /> 登录
                         </button>
                     </Link>
@@ -286,14 +330,13 @@ export default function Home() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 pt-24 grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* 左侧边栏 (修改版) */}
+        {/* Sidebar */}
         <aside className="hidden lg:block lg:col-span-3 space-y-8 sticky top-24 h-fit">
             <div className="flex items-center gap-3 px-2">
                 <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
                     <UserIcon size={20} />
                 </div>
                 <div>
-                    {/* 2. 修改 Workspace 显示 */}
                     <h3 className="text-sm font-semibold">{user ? user.email?.split('@')[0] : 'Guest'}</h3>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">Personal Space</p>
                 </div>
@@ -319,7 +362,7 @@ export default function Home() {
             </div>
         </aside>
 
-        {/* 右侧列表区 */}
+        {/* Trips List */}
         <div className="col-span-1 lg:col-span-9 space-y-6">
             
             <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-4">
@@ -369,9 +412,21 @@ export default function Home() {
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60"></div>
                                 
-                                {user && user.id === trip.user_id && (
-                                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                         <button onClick={(e) => handleDelete(e, trip.id)} className="bg-white/90 backdrop-blur text-red-500 p-1.5 rounded-md hover:bg-white hover:text-red-600 transition-colors shadow-sm">
+                                {/* 🌟 删除按钮：现在根据 my_role 判断，所有人都能看到按钮，但功能不同 */}
+                                {user && (
+                                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-2">
+                                         {/* 成员数标记 (如果有协作) */}
+                                         {trip.member_count && trip.member_count > 1 && (
+                                            <span className="bg-black/50 backdrop-blur text-white px-2 py-1 rounded-md text-[10px] flex items-center gap-1">
+                                                <Users size={10} /> {trip.member_count}
+                                            </span>
+                                         )}
+                                         
+                                         <button 
+                                            onClick={(e) => handleDelete(e, trip)} 
+                                            className="bg-white/90 backdrop-blur text-zinc-700 p-1.5 rounded-md hover:bg-white hover:text-red-600 transition-colors shadow-sm"
+                                            title={trip.my_role === 'owner' ? "永久删除" : "退出行程"}
+                                        >
                                             <MoreHorizontal size={14} />
                                         </button>
                                     </div>
@@ -379,9 +434,12 @@ export default function Home() {
 
                                 <div className="absolute bottom-3 left-3 right-3 text-white">
                                     <div className="flex gap-2 mb-2">
-                                        <span className="text-[10px] font-medium bg-white/20 backdrop-blur-md px-2 py-1 rounded-full border border-white/10">
-                                            Planning
-                                        </span>
+                                        {/* 权限徽章 */}
+                                        {trip.my_role === 'owner' ? (
+                                            <span className="text-[10px] font-medium bg-indigo-500/80 backdrop-blur-md px-2 py-1 rounded-full border border-white/10">Owner</span>
+                                        ) : (
+                                            <span className="text-[10px] font-medium bg-orange-500/80 backdrop-blur-md px-2 py-1 rounded-full border border-white/10">Shared</span>
+                                        )}
                                         {trip.is_public && <span className="text-[10px] font-medium bg-emerald-500/80 backdrop-blur-md px-2 py-1 rounded-full border border-white/10">Public</span>}
                                     </div>
                                     <h3 className="font-semibold tracking-tight text-lg leading-tight mb-1 truncate">{trip.title}</h3>
@@ -407,7 +465,7 @@ export default function Home() {
         </div>
       </main>
 
-      {/* 🌟 悬浮添加按钮 (改为了 handleOpenCreate 触发弹窗) */}
+      {/* Floating Add Button */}
       {user && (
           <div className="fixed bottom-8 right-8 z-50 animate-in zoom-in duration-300">
             <button onClick={handleOpenCreate} className="bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 w-16 h-16 rounded-full shadow-2xl flex items-center justify-center hover:opacity-90 hover:scale-105 active:scale-95 transition-all border-2 border-white/20 dark:border-zinc-900/20">
