@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Settings, LogOut } from 'lucide-react'
 import { cn } from "@/lib/utils"
+import { useRouter } from 'next/navigation'
 
 interface UserMenuProps {
   user: any;
@@ -12,6 +13,7 @@ interface UserMenuProps {
 
 export default function UserMenu({ user, onLogout, onOpenSettings }: UserMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const router = useRouter()
   const menuRef = useRef<HTMLDivElement>(null)
 
   // 监听点击外部事件，自动关闭菜单
@@ -62,7 +64,10 @@ export default function UserMenu({ user, onLogout, onOpenSettings }: UserMenuPro
             
             {/* 菜单选项 */}
             <button 
-                onClick={() => { setIsOpen(false); onOpenSettings(); }} 
+                onClick={() => { 
+                    setIsOpen(false); 
+                    router.push('/settings'); // ✨ 改为跳转到新页面
+                }} 
                 className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg flex items-center gap-2 transition-colors text-zinc-700 dark:text-zinc-300"
             >
                 <Settings size={14}/> 通用设置
