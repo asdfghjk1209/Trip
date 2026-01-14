@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 import { useRouter } from 'next/navigation';
 import { cn } from "@/lib/utils";
+import UserMenu from "@/components/UserMenu"; // 确保路径正确
 
 interface Trip {
   id: number;
@@ -246,22 +247,30 @@ export default function Home() {
                     <div className="w-7 h-7 rounded-full bg-zinc-100 animate-pulse"></div>
                 ) : user ? (
                     <div className="flex items-center gap-3">
-                        <div className="text-xs text-zinc-500 dark:text-zinc-400 hidden sm:block">{user.email?.split('@')[0]}</div>
-                        <div className="group relative">
-                            <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center ring-1 ring-zinc-200 dark:ring-zinc-800 cursor-pointer overflow-hidden">
-                                <span className="text-xs font-bold">{user.email?.[0].toUpperCase()}</span>
+                        {authChecking ? (
+                            <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 animate-pulse"></div>
+                        ) : user ? (
+                            <div className="flex items-center gap-3">
+                                {/* 显示用户名 (大屏幕显示) */}
+                                <div className="text-xs text-zinc-500 dark:text-zinc-400 hidden sm:block">
+                                    {user.email?.split('@')[0]}
+                                </div>
+
+                                {/* ✨ 这里替换为新的组件 ✨ */}
+                                <UserMenu 
+                                    user={user} 
+                                    onLogout={handleLogout} 
+                                    onOpenSettings={() => setShowSettingsModal(true)} 
+                                />
+                                
                             </div>
-                            {/* Dropdown Menu (Avatar) */}
-                            <div className="absolute right-0 top-full mt-2 w-40 bg-white dark:bg-zinc-900 rounded-xl shadow-xl border border-zinc-100 dark:border-zinc-800 p-1.5 hidden group-hover:block animate-in fade-in slide-in-from-top-2">
-                                <button onClick={() => setShowSettingsModal(true)} className="w-full text-left px-3 py-2 text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg flex items-center gap-2 transition-colors">
-                                    <Settings size={14}/> 通用设置
+                        ) : (
+                            <Link href="/login">
+                                <button className="flex items-center gap-1.5 px-4 py-2 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-bold rounded-full hover:opacity-90 transition-all shadow-sm">
+                                    <LogIn size={12} /> 登录
                                 </button>
-                                <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
-                                <button onClick={handleLogout} className="w-full text-left px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg flex items-center gap-2 transition-colors">
-                                    <LogOut size={14}/> 退出登录
-                                </button>
-                            </div>
-                        </div>
+                            </Link>
+                        )}
                     </div>
                 ) : (
                     <Link href="/login">
