@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -11,8 +13,6 @@ const NAV_ITEMS = [
 ];
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
-    // 注意：layout 是服务端组件，不能直接用 usePathname，需要拆分 Sidebar 为客户端组件
-    // 但为了简化，我们先把 Sidebar 做成客户端组件引入
     return (
         <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col md:flex-row">
             {/* 顶部移动端导航 / 返回按钮 */}
@@ -62,22 +62,11 @@ function Sidebar() {
     )
 }
 
-// 客户端组件分离
-'use client';
-import { usePathname } from 'next/navigation';
-
 function NavLinks() {
     const pathname = usePathname();
 
     // 简单的判断 isActive，兼容子路由
     const isActive = (href: string) => pathname?.startsWith(href);
-
-    const NAV_ITEMS = [
-        { href: '/settings/general', label: '通用设置', icon: Settings },
-        { href: '/settings/appearance', label: '外观 & 主题', icon: Palette },
-        { href: '/settings/notifications', label: '通知推送', icon: Bell },
-        { href: '/settings/about', label: '关于 TripSync', icon: Info },
-    ];
 
     return (
         <>
