@@ -1,17 +1,8 @@
-'use client';
+export const dynamic = 'force-dynamic';
 
-import { Suspense } from 'react';
 import { Github, Twitter, Globe, Info } from 'lucide-react';
 
 export default function AboutSettings() {
-    return (
-        <Suspense fallback={<div>Loading...</div>}>
-            <AboutContent />
-        </Suspense>
-    );
-}
-
-function AboutContent() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
             <div>
