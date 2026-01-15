@@ -309,9 +309,16 @@ export default function LoginPage() {
   const handleResendOtp = async () => {
     if (countdown > 0) return;
     setLoading(true);
-    // Determine type based on mode
-    const type = mode === 'reset' ? 'recovery' : 'signup';
-    const { error } = await supabase.auth.resend({ type, email });
+
+    let error;
+    if (mode === 'reset') {
+      const res = await supabase.auth.resetPasswordForEmail(email);
+      error = res.error;
+    } else {
+      const res = await supabase.auth.resend({ type: 'signup', email });
+      error = res.error;
+    }
+
     setLoading(false);
     if (error) setErrorMsg(error.message);
     else setCountdown(60);
