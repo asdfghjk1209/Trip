@@ -58,10 +58,10 @@ function MapUpdater({ markers }: { markers: any[] }) {
     if (markers && markers.length > 0) {
       // 1. 提取所有坐标点
       const points = markers.map(m => [m.lat, m.lng] as [number, number]);
-      
+
       // 2. 创建边界 (Bounds)
       const bounds = L.latLngBounds(points);
-      
+
       // 3. 调整视野以包含所有点 (padding 避免点紧贴边缘)
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
     }
@@ -72,9 +72,9 @@ function MapUpdater({ markers }: { markers: any[] }) {
 
 export default function Map({ markers = [], className }: MapProps) {
   // 提取路径线坐标
-  const polylinePositions = useMemo(() => 
-    markers.map(m => [m.lat, m.lng] as [number, number]), 
-  [markers]);
+  const polylinePositions = useMemo(() =>
+    markers.map(m => [m.lat, m.lng] as [number, number]),
+    [markers]);
 
   // 默认中心点 (成都)
   const defaultCenter = [30.6586, 104.0648] as [number, number];
@@ -82,36 +82,36 @@ export default function Map({ markers = [], className }: MapProps) {
 
   return (
     <div className={`relative z-0 ${className}`}>
-      <MapContainer 
-        center={center} 
-        zoom={13} 
-        scrollWheelZoom={true} 
+      <MapContainer
+        center={center}
+        zoom={13}
+        scrollWheelZoom={true}
         style={{ height: '100%', width: '100%', borderRadius: 'inherit' }}
       >
         {/* 1. 地图图层 (使用高德/OSM/CartoDB) */}
         {/* 方案 A: CartoDB Voyager (非常适合旅行风格，干净漂亮) */}
-        <TileLayer
+        {/* <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors'
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        />
-        
-        {/* 方案 B: 如果你在国内觉得慢，可以用高德地图 (取消下面注释) */}
-        {/* <TileLayer
-           url="https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
         /> */}
+
+        {/* 方案 B: 如果你在国内觉得慢，可以用高德地图 (取消下面注释) */}
+        <TileLayer
+          url="https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}"
+        />
 
         {/* 2. 路径连线 (虚线效果) */}
         {polylinePositions.length > 1 && (
-          <Polyline 
-            positions={polylinePositions} 
-            pathOptions={{ color: '#6366f1', weight: 3, dashArray: '5, 10', opacity: 0.6 }} 
+          <Polyline
+            positions={polylinePositions}
+            pathOptions={{ color: '#6366f1', weight: 3, dashArray: '5, 10', opacity: 0.6 }}
           />
         )}
 
         {/* 3. 标记点 */}
         {markers.map((marker, idx) => (
-          <Marker 
-            key={`${marker.id}-${idx}`} 
+          <Marker
+            key={`${marker.id}-${idx}`}
             position={[marker.lat, marker.lng]}
             icon={createNumberedIcon(idx)}
           >
@@ -124,7 +124,7 @@ export default function Map({ markers = [], className }: MapProps) {
 
         {/* 4. 自动更新器 */}
         <MapUpdater markers={markers} />
-        
+
       </MapContainer>
     </div>
   );

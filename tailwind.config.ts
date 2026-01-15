@@ -1,9 +1,9 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  // 核心修复：开启 class 模式，这样手动添加 'dark' 类名才会生效
-  darkMode: 'class', 
-  
+  // 核心修复：开启 selector 模式 (Tailwind v4)，这样手动添加 'dark' 类名才会生效
+  darkMode: 'selector',
+
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
