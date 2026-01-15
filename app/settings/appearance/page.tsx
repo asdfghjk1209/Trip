@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, Suspense } from 'react';
 import { Check, Moon, Sun, Monitor, RefreshCw, Undo, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
