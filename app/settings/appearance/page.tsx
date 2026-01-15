@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { Check, Moon, Sun, Monitor, RefreshCw, Undo, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +15,14 @@ const THEME_PRESETS = [
 ];
 
 export default function AppearancePage() {
+    return (
+        <Suspense fallback={<div>Loading settings...</div>}>
+            <AppearanceContent />
+        </Suspense>
+    );
+}
+
+function AppearanceContent() {
     // Initial / Persisted State
     const [initialState, setInitialState] = useState({
         mode: 'light' as 'light' | 'dark',
