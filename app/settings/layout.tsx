@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import SettingsSidebar from '@/components/SettingsSidebar';
 import { ArrowLeft, Menu } from 'lucide-react';
 import Link from 'next/link';
@@ -22,7 +23,9 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
             </div>
 
             {/* Sidebar Component */}
-            <SettingsSidebar />
+            <Suspense fallback={<div className="hidden md:block w-64 border-r border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-950/50 h-screen sticky top-0" />}>
+                <SettingsSidebar />
+            </Suspense>
 
             {/* Main Content */}
             <main className="flex-1 overflow-y-auto h-[calc(100vh-60px)] md:h-screen">
